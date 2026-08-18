@@ -24,6 +24,14 @@
 #include "song_length_calculator.hpp"
 #include "utils.hpp"
 
+// BambooTracker's built-in OPNA rhythm ROM (bass drum, snare drum, top
+// cymbal, high hat, tom tom, rim shot), compiled from chip/mame/fmopn_2608rom.h
+// into chip/mame/fmopn.c. Reused when exporting Rhythm to VGM with the
+// YM2610B target, whose ADPCM-A unit has no built-in samples of its own and
+// must have sample ROM data supplied by the VGM file (see
+// chip::VgmLogger::setRhythmAdpcmAData()).
+extern "C" const unsigned char YM2608_ADPCM_ROM[0x2000];
+
 namespace
 {
 const uint32_t CHIP_CLOCK = 3993600 * 2;
@@ -1856,7 +1864,17 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 			std::copy(sample.begin(), sample.end(), rom.begin() + static_cast<int>(startAddr << 5));
 		}
 	}
-	exCntr->setDataBlock(std::move(rom));
+	// YM2610/YM2610B expose the melodic ADPCM (Delta-T) ROM under a different
+	// VGM data block type than YM2608, even though the sample data itself is
+	// byte-for-byte compatible.
+	bool isYm2610b = (target & io::Export_FmMask) == io::Export_YM2610B;
+	exCntr->setDataBlock(std::move(rom), isYm2610b ? 0x83 : 0x81);
+
+	// Rhythm has no equivalent to export on YM2610/YM2610B without supplying
+	// sample ROM data of its own; reuse BambooTracker's built-in OPNA rhythm
+	// samples so existing modules keep their percussion on export. No-op for
+	// other targets.
+	exCntr->setRhythmAdpcmAData(std::vector<uint8_t>(std::begin(YM2608_ADPCM_ROM), std::end(YM2608_ADPCM_ROM)));
 
 	opnaCtrl_->setExportContainer(exCntr);
 	startPlayFromStart();

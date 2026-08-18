@@ -257,8 +257,8 @@ void VgmExportSettingsDialog::updateSupportInformation()
 	}
 
 	bool haveSsg = fm == io::Export_YM2608 || fm == io::Export_YM2203 || fm == io::Export_YM2610B || ssg != io::Export_InternalSsg;
-	bool haveRhythm = fm == io::Export_YM2608;
-	bool haveAdpcm = fm == io::Export_YM2608;
+	bool haveRhythm = fm == io::Export_YM2608 || fm == io::Export_YM2610B;
+	bool haveAdpcm = fm == io::Export_YM2608 || fm == io::Export_YM2610B;
 
 	ui->supportFmChannelsLabel->setText(QString::number(channels));
 	ui->supportSsgLabel->setText(haveSsg ? tr("Yes") : tr("No"));

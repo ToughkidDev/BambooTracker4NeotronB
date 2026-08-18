@@ -117,6 +117,28 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 		buf_.push_back(static_cast<uint8_t>(offset));
 		buf_.push_back(value);
 	}
+	else if (fm == io::Export_YM2610B && (offset & 0x100) == 0 && (offset & 0xf0) == 0x10) {
+		// BambooTracker always drives its Rhythm channels using YM2608-native
+		// register addresses (0x10-0x1f on port 0: keyon/off at 0x10, total
+		// volume at 0x11, per-channel pan/level at 0x18-0x1d). On real
+		// YM2610/YM2610B hardware the equivalent unit (ADPCM-A) is mapped to
+		// port 1 instead, at the same relative register numbers (0x00-0x0d).
+		// Remap port and address; see setRhythmAdpcmAData() for the matching
+		// per-channel start/end address setup.
+		buf_.push_back(cmdFmPortB); // 0x59: port 1
+		buf_.push_back(static_cast<uint8_t>(offset - 0x10));
+		buf_.push_back(value);
+	}
+	else if (fm == io::Export_YM2610B && (offset & 0x100) != 0 && (offset & 0xff) < 0x10) {
+		// Conversely, BambooTracker's melodic ADPCM (Delta-T) writes use the
+		// YM2608-native port 1 addresses 0x100-0x10f. On YM2610/YM2610B the
+		// same Delta-T unit is mapped to port 0 instead, at addresses
+		// 0x10-0x1f. Only the port and base address differ; the per-register
+		// meaning (control/start/stop/delta-N/volume) is identical.
+		buf_.push_back(cmdFmPortA); // 0x58: port 0
+		buf_.push_back(static_cast<uint8_t>(0x10 + (offset & 0xff)));
+		buf_.push_back(value);
+	}
 	else if (cmdFmPortA && (offset & 0x100) == 0) {
 		bool compatible = true;
 
@@ -138,7 +160,7 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 	else if (cmdFmPortB && (offset & 0x100) != 0) {
 		bool compatible = true;
 
-		if (offset < 0x10) // ADPCM section
+		if ((offset & 0xff) < 0x10) // ADPCM section
 			compatible = fm == io::Export_YM2608;
 
 		if (compatible) {
@@ -149,11 +171,11 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 	}
 }
 
-void VgmLogger::setDataBlock(std::vector<uint8_t> data)
+void VgmLogger::setDataBlock(std::vector<uint8_t> data, uint8_t blockType)
 {
 	buf_.push_back(0x67);
 	buf_.push_back(0x66);
-	buf_.push_back(0x81);
+	buf_.push_back(blockType);
 	size_t blockSize = data.size() + 8;
 	buf_.push_back(blockSize & 0xff);
 	buf_.push_back((blockSize >> 8) & 0xff);
@@ -165,6 +187,45 @@ void VgmLogger::setDataBlock(std::vector<uint8_t> data)
 	buf_.push_back(data.size() >> 24);
 	buf_.resize(buf_.size() + 4);	// Start address is 0
 	std::copy(data.begin(), data.end(), std::back_inserter(buf_));
+}
+
+void VgmLogger::setRhythmAdpcmAData(std::vector<uint8_t> rhythmRom)
+{
+	if ((target_ & io::Export_FmMask) != io::Export_YM2610B) return;
+
+	// Byte ranges of the 6 rhythm samples within BambooTracker's built-in OPNA
+	// rhythm ROM (chip/mame/fmopn.c's YM2608_ADPCM_ROM_addr): bass drum, snare
+	// drum, top cymbal, high hat, tom tom, rim shot, in that channel order.
+	static constexpr uint32_t sampleRanges[6][2] = {
+		{ 0x0000, 0x01bf },
+		{ 0x01c0, 0x043f },
+		{ 0x0440, 0x1b7f },
+		{ 0x1b80, 0x1cff },
+		{ 0x1d00, 0x1f7f },
+		{ 0x1f80, 0x1fff },
+	};
+
+	setDataBlock(std::move(rhythmRom), 0x82);	// YM2610 ADPCM ROM data
+
+	// YM2610/YM2610B ADPCM-A address registers use 256-byte (1 << 8) units:
+	// real byte address = register value << 8.
+	constexpr uint32_t addressShift = 8;
+
+	for (uint8_t ch = 0; ch < 6; ++ch) {
+		uint32_t startReg = sampleRanges[ch][0] >> addressShift;
+		uint32_t endReg = sampleRanges[ch][1] >> addressShift;
+
+		auto writePort1 = [this](uint8_t reg, uint8_t value) {
+			buf_.push_back(0x59);
+			buf_.push_back(reg);
+			buf_.push_back(value);
+		};
+
+		writePort1(static_cast<uint8_t>(0x10 + ch), static_cast<uint8_t>(startReg & 0xff));
+		writePort1(static_cast<uint8_t>(0x18 + ch), static_cast<uint8_t>((startReg >> 8) & 0xff));
+		writePort1(static_cast<uint8_t>(0x20 + ch), static_cast<uint8_t>(endReg & 0xff));
+		writePort1(static_cast<uint8_t>(0x28 + ch), static_cast<uint8_t>((endReg >> 8) & 0xff));
+	}
 }
 
 void VgmLogger::setWait()

@@ -63,7 +63,35 @@ class VgmLogger final : public AbstractRegisterWriteLogger
 public:
 	VgmLogger(int target, uint32_t intrRate);
 	void recordRegisterChange(uint32_t offset, uint8_t value) override;
-	void setDataBlock(std::vector<uint8_t> data);
+
+	/**
+	 * @brief Embed a ROM/RAM data block (VGM command 0x67 0x66) into the stream.
+	 * @param data Raw ROM bytes.
+	 * @param blockType VGM data block type ID (e.g. 0x81 = YM2608 DELTA-T ROM,
+	 *		  0x82 = YM2610 ADPCM ROM, 0x83 = YM2610 DELTA-T ROM).
+	 */
+	void setDataBlock(std::vector<uint8_t> data, uint8_t blockType = 0x81);
+
+	/**
+	 * @brief Set up the YM2610/YM2610B ADPCM-A ("Rhythm") unit so it reproduces
+	 *		  BambooTracker's built-in OPNA rhythm samples.
+	 *
+	 * Unlike the YM2608, which plays back 6 fixed samples from its internal ROM
+	 * using only a handful of control registers, the YM2610/YM2610B ADPCM-A unit
+	 * has no built-in samples: each of its 6 channels has a fully programmable
+	 * start/end address into an external sample ROM that must be supplied by the
+	 * VGM file itself. This method embeds BambooTracker's own OPNA rhythm ROM as
+	 * a 0x82 data block and programs each channel's start/end address registers
+	 * to point at the same 6 sample regions used by the YM2608 rhythm unit, so
+	 * that keyon/volume/pan writes recorded through the normal YM2608-native
+	 * Rhythm register path (0x10-0x1f) keep working after being remapped.
+	 *
+	 * No-op unless the export target is YM2610B.
+	 *
+	 * @param rhythmRom Raw bytes of BambooTracker's built-in OPNA rhythm ROM
+	 *		  (chip::mame's `YM2608_ADPCM_ROM`, 0x2000 bytes).
+	 */
+	void setRhythmAdpcmAData(std::vector<uint8_t> rhythmRom);
 
 private:
 	uint32_t intrRate_;

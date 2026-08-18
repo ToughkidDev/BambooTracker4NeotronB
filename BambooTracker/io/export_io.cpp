@@ -86,8 +86,10 @@ void writeVgm(BinaryContainer& container, int target, const std::vector<uint8_t>
 		*reinterpret_cast<uint32_t*>(header + 0x44) = clock / 2;
 		break;
 	case Export_YM2610B:
-		// 0x4c: YM2610/B clock
-		*reinterpret_cast<uint32_t*>(header + 0x4c) = clock;
+		// 0x4c: YM2610/B clock. Bit 31 distinguishes YM2610B (set) from plain
+		// YM2610 (clear); without it players treat the file as YM2610, which
+		// lacks full 4-operator FM on channels 3/4.
+		*reinterpret_cast<uint32_t*>(header + 0x4c) = clock | 0x80000000;
 		break;
 	case Export_NoneFm:
 		break;
