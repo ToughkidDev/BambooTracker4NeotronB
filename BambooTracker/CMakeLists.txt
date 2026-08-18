@@ -285,6 +285,13 @@ if (REAL_CHIP)
 endif (REAL_CHIP)
 
 if (APPLE)
+	# Without an explicit bundle identifier, CMake leaves CFBundleIdentifier
+	# unset/malformed in the generated Info.plist. On modern macOS (Sequoia+,
+	# confirmed also affecting Qt 5.15.x, not just Qt6) this silently breaks
+	# QFileDialog: getOpenFileName/getSaveFileName return immediately without
+	# ever showing a window, even with QFileDialog::DontUseNativeDialog set.
+	# See: https://forum.qt.io/topic/162825/qfiledialog-getopenfilename-fails-to-display-dialog-with-native-macos
+	set (MACOSX_BUNDLE_GUI_IDENTIFIER "net.bambootracker.BambooTracker")
 	set (MACOSX_BUNDLE_ICON_FILE BambooTracker.icns)
 	set (MACOSX_ICNS "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon/${MACOSX_BUNDLE_ICON_FILE}")
 	set_source_files_properties (${MACOSX_ICNS}

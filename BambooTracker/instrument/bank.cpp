@@ -127,7 +127,7 @@ std::string WopnBank::getInstrumentIdentifier(size_t index) const
 {
 	const InstEntry& ent = entries_.at(index);
 	char identifier[64];
-	std::sprintf(identifier, "%c%03d:%03d:%03d", "MP"[ent.vals.percussive],
+	std::snprintf(identifier, sizeof(identifier), "%c%03d:%03d:%03d", "MP"[ent.vals.percussive],
 			ent.vals.msb, ent.vals.lsb, ent.vals.nth);
 	return identifier;
 }
