@@ -96,6 +96,14 @@ public:
 private:
 	uint32_t intrRate_;
 
+	// Shadow copy of BambooTracker's YM2608-native Delta-T register bank
+	// (offsets 0x00-0x0f on port 1), used only when the export target is
+	// YM2610B. Needed to reconstruct the 16-bit start/stop/limit address
+	// register pairs (low byte + high byte are written as separate VGM
+	// commands) so they can be rescaled before being remapped; see the
+	// comment above the YM2610B Delta-T branch in recordRegisterChange().
+	uint8_t deltaTRegShadow_[0x10] = {};
+
 	void setWait() override;
 };
 

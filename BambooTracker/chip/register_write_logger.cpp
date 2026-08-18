@@ -133,11 +133,59 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 		// Conversely, BambooTracker's melodic ADPCM (Delta-T) writes use the
 		// YM2608-native port 1 addresses 0x100-0x10f. On YM2610/YM2610B the
 		// same Delta-T unit is mapped to port 0 instead, at addresses
-		// 0x10-0x1f. Only the port and base address differ; the per-register
-		// meaning (control/start/stop/delta-N/volume) is identical.
-		buf_.push_back(cmdFmPortA); // 0x58: port 0
-		buf_.push_back(static_cast<uint8_t>(0x10 + (offset & 0xff)));
-		buf_.push_back(value);
+		// 0x10-0x1f. The port and base address differ, but so does the
+		// address-register *scale*: BambooTracker always drives the YM2608
+		// Delta-T unit in "DRAM x8" mode (control2 register, offset 0x01, low
+		// 2 bits = 2), which makes its start/stop/limit address registers
+		// represent byte address >> 5 (32-byte units). Real YM2610/YM2610B
+		// hardware ignores that RAM-type selection entirely for the Delta-T
+		// unit (it always reads from external ROM) and its address registers
+		// always represent byte address >> 8 (256-byte units) instead. Passing
+		// the raw register value through unchanged therefore points at a byte
+		// address 8x too large on YM2610B, silently dropping most/all melodic
+		// ADPCM playback once the (wrongly scaled) address falls outside the
+		// embedded sample data. To compensate, the 16-bit start (0x02/0x03),
+		// stop (0x04/0x05) and limit (0x0c/0x0d) address register pairs are
+		// reconstructed from a shadow copy of the YM2608-native register bank
+		// and rescaled by >>3 (32/8 = 8x) before being split back into
+		// low/high bytes for the YM2610B target. All other registers in this
+		// range (control, control2, ADPCM data, delta-N, level) keep the same
+		// units on both chips and are passed through unchanged.
+		uint8_t addr = static_cast<uint8_t>(offset & 0xff);
+		deltaTRegShadow_[addr] = value;
+
+		// Low and high bytes of a pair arrive as two separate register writes,
+		// so the combined 16-bit value (and therefore the correctly rescaled
+		// low byte) generally is not known yet when the *low* byte arrives.
+		// Re-emit both bytes of the pair on every touch (instead of only the
+		// byte that was actually written) so the target chip's shadow state
+		// for that pair is always brought fully up to date, regardless of
+		// which order BambooTracker happens to write the two halves in.
+		auto emitPair = [this](uint8_t loAddr, uint8_t hiAddr) {
+			uint16_t combined = static_cast<uint16_t>((deltaTRegShadow_[hiAddr] << 8) | deltaTRegShadow_[loAddr]);
+			uint16_t rescaled = combined >> 3;
+			buf_.push_back(0x58);
+			buf_.push_back(static_cast<uint8_t>(0x10 + loAddr));
+			buf_.push_back(static_cast<uint8_t>(rescaled & 0xff));
+			buf_.push_back(0x58);
+			buf_.push_back(static_cast<uint8_t>(0x10 + hiAddr));
+			buf_.push_back(static_cast<uint8_t>((rescaled >> 8) & 0xff));
+		};
+
+		if (addr == 0x02 || addr == 0x03) {
+			emitPair(0x02, 0x03);
+		}
+		else if (addr == 0x04 || addr == 0x05) {
+			emitPair(0x04, 0x05);
+		}
+		else if (addr == 0x0c || addr == 0x0d) {
+			emitPair(0x0c, 0x0d);
+		}
+		else {
+			buf_.push_back(cmdFmPortA); // 0x58: port 0
+			buf_.push_back(static_cast<uint8_t>(0x10 + addr));
+			buf_.push_back(value);
+		}
 	}
 	else if (cmdFmPortA && (offset & 0x100) == 0) {
 		bool compatible = true;
@@ -205,15 +253,53 @@ void VgmLogger::setRhythmAdpcmAData(std::vector<uint8_t> rhythmRom)
 		{ 0x1f80, 0x1fff },
 	};
 
-	setDataBlock(std::move(rhythmRom), 0x82);	// YM2610 ADPCM ROM data
-
 	// YM2610/YM2610B ADPCM-A address registers use 256-byte (1 << 8) units:
-	// real byte address = register value << 8.
+	// real byte address = register value << 8, and the end address register
+	// covers a full 256-byte block (real end = (register << 8) + 0xff). The
+	// samples above are packed tightly (sub-256-byte boundaries) inside
+	// BambooTracker's compact 8KB YM2608 rhythm ROM, which real ADPCM-A
+	// sample ROMs never are -- on actual hardware/games, each sample is laid
+	// out starting on its own 256-byte-aligned block specifically because the
+	// address registers can't express anything finer. Feeding the packed
+	// YM2608 layout straight through truncates each start down and rounds
+	// each end up to the nearest 256-byte boundary, so most channels end up
+	// briefly playing a slice of the *previous* or *next* sample's real audio
+	// before/after their own -- audible as wrong/garbled percussion, not just
+	// a quiet click. To match the YM2610B ADPCM-A spec, repack each sample
+	// into its own 256-byte-aligned, 256-byte-padded slot in a new ROM image
+	// before embedding it, so every start register is exact (alignment is a
+	// multiple of 256) and every end register overshoots only into that same
+	// sample's own trailing pad silence, never into a neighboring sample.
+	constexpr uint32_t blockSize = 0x100;
+	std::vector<uint8_t> paddedRom;
+	uint32_t startOffset[6];
+	uint32_t endOffset[6];
+
+	for (uint8_t ch = 0; ch < 6; ++ch) {
+		uint32_t sampleBegin = sampleRanges[ch][0];
+		uint32_t sampleEnd = sampleRanges[ch][1];	// inclusive
+		uint32_t sampleLen = sampleEnd - sampleBegin + 1;
+		uint32_t paddedLen = ((sampleLen + blockSize - 1) / blockSize) * blockSize;
+
+		// paddedRom.size() is already a multiple of blockSize at this point
+		// (true for the first channel trivially, and maintained by construction
+		// below for every channel after), so this is already 256-byte aligned.
+		uint32_t alignedStart = static_cast<uint32_t>(paddedRom.size());
+
+		paddedRom.insert(paddedRom.end(), rhythmRom.begin() + sampleBegin, rhythmRom.begin() + sampleEnd + 1);
+		paddedRom.resize(alignedStart + paddedLen, 0x00);	// pad tail with silence up to the block boundary
+
+		startOffset[ch] = alignedStart;
+		endOffset[ch] = alignedStart + paddedLen - 1;	// exactly (register << 8) + 0xff for some register
+	}
+
+	setDataBlock(std::move(paddedRom), 0x82);	// YM2610 ADPCM ROM data
+
 	constexpr uint32_t addressShift = 8;
 
 	for (uint8_t ch = 0; ch < 6; ++ch) {
-		uint32_t startReg = sampleRanges[ch][0] >> addressShift;
-		uint32_t endReg = sampleRanges[ch][1] >> addressShift;
+		uint32_t startReg = startOffset[ch] >> addressShift;
+		uint32_t endReg = endOffset[ch] >> addressShift;
 
 		auto writePort1 = [this](uint8_t reg, uint8_t value) {
 			buf_.push_back(0x59);
