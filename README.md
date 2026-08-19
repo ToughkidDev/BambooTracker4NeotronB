@@ -1,3 +1,5 @@
+ToughkidDev에 의해 fork되어 YM2610B 지원 추가. 
+
 <!-- Icon & Title -->
 <p align="center">
   <img src="./data/icons/128x128/apps/BambooTracker.png" alt="BambooTracker-icon">
