@@ -61,6 +61,7 @@ public:
 
 private slots:
 	void updateSupportInformation();
+	void updateGainDefault();
 
 private:
 	Ui::VgmExportSettingsDialog *ui;

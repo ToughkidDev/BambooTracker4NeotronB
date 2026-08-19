@@ -28,6 +28,15 @@
 #include <QTextCodec>
 #include "io/export_io.hpp"
 
+namespace
+{
+// SSG mix gain defaults (dB): YM2610B's internal SSG comes out noticeably
+// louder relative to FM than YM2608's when mixed at the same nominal level,
+// so it needs a deeper default cut to sound balanced out of the box.
+constexpr double kDefaultGainOther = -1.0;
+constexpr double kDefaultGainYm2610b = -9.0;
+}
+
 VgmExportSettingsDialog::VgmExportSettingsDialog(QWidget *parent)
 	: QDialog(parent),
 	  ui(new Ui::VgmExportSettingsDialog)
@@ -37,10 +46,16 @@ VgmExportSettingsDialog::VgmExportSettingsDialog(QWidget *parent)
 	setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
 	for (QRadioButton *button : {
-		 ui->ym2608RadioButton, ui->ym2612RadioButton, ui->ym2203RadioButton, ui->noneFmRadioButton,
-		 ui->internalSsgRadioButton, ui->ay8910PsgRadioButton })
+		 ui->ym2608RadioButton, ui->ym2612RadioButton, ui->ym2203RadioButton, ui->ym2610bRadioButton, ui->noneFmRadioButton,
+		 ui->internalSsgRadioButton, ui->ay8910PsgRadioButton, ui->ym2149PsgRadioButton })
 		connect(button, &QAbstractButton::toggled,
 				this, &VgmExportSettingsDialog::updateSupportInformation);
+
+	for (QRadioButton *button : {
+		 ui->ym2608RadioButton, ui->ym2612RadioButton, ui->ym2203RadioButton,
+		 ui->ym2610bRadioButton, ui->noneFmRadioButton })
+		connect(button, &QAbstractButton::toggled,
+				this, &VgmExportSettingsDialog::updateGainDefault);
 
 	updateSupportInformation();
 }
@@ -234,6 +249,19 @@ bool VgmExportSettingsDialog::isEnabledMix() const
 double VgmExportSettingsDialog::getGain() const
 {
 	return ui->gainDoubleSpinBox->value();
+}
+
+void VgmExportSettingsDialog::updateGainDefault()
+{
+	bool isYm2610b = ui->ym2610bRadioButton->isChecked();
+	double newDefault = isYm2610b ? kDefaultGainYm2610b : kDefaultGainOther;
+	double oldDefault = isYm2610b ? kDefaultGainOther : kDefaultGainYm2610b;
+
+	// Only auto-switch the gain value if it still sits at the *other*
+	// target's default -- if the user typed in a custom value, leave it
+	// alone rather than clobbering their choice when they flip targets.
+	if (ui->gainDoubleSpinBox->value() == oldDefault)
+		ui->gainDoubleSpinBox->setValue(newDefault);
 }
 
 void VgmExportSettingsDialog::updateSupportInformation()
