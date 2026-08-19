@@ -5,6 +5,7 @@
 
 #include "bamboo_tracker.hpp"
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include <exception>
 #include <iterator>
@@ -1851,6 +1852,18 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 
 	auto exCntr = std::make_shared<chip::VgmLogger>(target, mod_->getTickFrequency());
 
+	// SSG mix gain: bake it directly into each SSG channel's amplitude
+	// register value as it's recorded, rather than relying on the VGM
+	// "Chip Volume" extra header (most real-world players, e.g.
+	// Game_Music_Emu which several popular players including Cog are built
+	// on, never implemented that optional header field and silently ignore
+	// it). Master FM/SSG mixer levels are fixed session-wide settings, so
+	// it's safe to read them here before playback simulation starts.
+	if (shouldSetMix) {
+		double ratio = std::pow(10.0, (opnaCtrl_->getMasterVolumeSSG() + gain - opnaCtrl_->getMasterVolumeFM()) / 20.0);
+		exCntr->setSsgGain(ratio);
+	}
+
 	// Set ADPCM
 	opnaCtrl_->clearSamplesADPCM();
 	std::vector<uint8_t> rom;
@@ -1913,15 +1926,12 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 
 	const io::GD3Tag* gd3Tag = gd3TagEnabled ? &tag : nullptr;
 
-	std::unique_ptr<io::VgmMix> mix;
-	if (shouldSetMix) {
-		mix = std::make_unique<io::VgmMix>(opnaCtrl_->getMasterVolumeFM(), opnaCtrl_->getMasterVolumeSSG(), gain);
-	}
-
+	// SSG gain (if any) is already baked into the recorded SSG amplitude
+	// register writes above; no VGM "Chip Volume" extra header is needed.
 	try {
 		io::writeVgm(container, target, exCntr->getData(), CHIP_CLOCK, mod_->getTickFrequency(),
 					 loopFlag, loopPoint, exCntr->getSampleLength() - loopPointSamples,
-					 exCntr->getSampleLength(), gd3Tag, mix.get());
+					 exCntr->getSampleLength(), gd3Tag, nullptr);
 		return true;
 	} catch (...) {
 		throw;

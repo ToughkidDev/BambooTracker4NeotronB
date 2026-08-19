@@ -93,6 +93,28 @@ public:
 	 */
 	void setRhythmAdpcmAData(std::vector<uint8_t> rhythmRom);
 
+	/**
+	 * @brief Set the linear amplitude ratio applied to SSG channel volume
+	 *		  register writes (offsets 0x08-0x0a: channel A/B/C amplitude).
+	 *
+	 * The VGM spec's "Chip Volume" extra header would be the tidier way to
+	 * carry this, but it's an optional VGM 1.70+ feature that most real
+	 * players (e.g. Game_Music_Emu, which several popular players including
+	 * Cog are built on) never implemented -- they just skip it, so a gain
+	 * set that way is silently inaudible on them. Baking the ratio directly
+	 * into the SSG amplitude register values that get written to the VGM
+	 * command stream instead works on every player, since it's just an
+	 * ordinary register write like any other.
+	 *
+	 * Only affects fixed-level channels (envelope bit, 0x10, clear); a
+	 * channel using the hardware envelope generator for its volume can't be
+	 * rescaled by editing this register alone, so those are left untouched.
+	 *
+	 * @param ratio Linear amplitude multiplier (1.0 = unchanged, e.g. from
+	 *		  10^(dB/20)). Pass 1.0 (the default) to disable scaling.
+	 */
+	void setSsgGain(double ratio) noexcept;
+
 private:
 	uint32_t intrRate_;
 
@@ -103,6 +125,9 @@ private:
 	// commands) so they can be rescaled before being remapped; see the
 	// comment above the YM2610B Delta-T branch in recordRegisterChange().
 	uint8_t deltaTRegShadow_[0x10] = {};
+
+	double ssgGainRatio_ = 1.0;
+	uint8_t scaleSsgVolumeReg(uint8_t regValue) const;
 
 	void setWait() override;
 };

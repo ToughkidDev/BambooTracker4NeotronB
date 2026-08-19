@@ -26,10 +26,22 @@
 #include "register_write_logger.hpp"
 #include "io/export_io.hpp"
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 
 namespace chip
 {
+namespace
+{
+// Standard AY-3-8910/YM2149 16-step SSG channel volume table (linear DAC
+// output per register value 0-15). Well-established, cross-checked against
+// BambooTracker's own SSG emulation core (submodules/emu2149's AY-3-8910
+// table, which is the same 16 values at half the YM2149 table's resolution).
+constexpr uint8_t kSsgVolTable[16] = {
+	0x00, 0x03, 0x04, 0x06, 0x09, 0x0D, 0x12, 0x1D,
+	0x22, 0x37, 0x4D, 0x62, 0x82, 0xA6, 0xD0, 0xFF
+};
+}
 AbstractRegisterWriteLogger::AbstractRegisterWriteLogger(int target)
 	: target_(target),
 	  lastWait_(0),
@@ -113,6 +125,8 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 																							   : 0x00;
 
 	if (cmdSsg && offset < 0x10) {
+		if (offset == 0x08 || offset == 0x09 || offset == 0x0a) // channel A/B/C amplitude
+			value = scaleSsgVolumeReg(value);
 		buf_.push_back(cmdSsg);
 		buf_.push_back(static_cast<uint8_t>(offset));
 		buf_.push_back(value);
@@ -217,6 +231,32 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 			buf_.push_back(value);
 		}
 	}
+}
+
+void VgmLogger::setSsgGain(double ratio) noexcept
+{
+	ssgGainRatio_ = ratio;
+}
+
+uint8_t VgmLogger::scaleSsgVolumeReg(uint8_t regValue) const
+{
+	if (ssgGainRatio_ == 1.0) return regValue;
+	if (regValue & 0x10) return regValue; // envelope-driven volume; can't rescale via this register
+
+	uint8_t level = regValue & 0x0f;
+	double target = kSsgVolTable[level] * ssgGainRatio_;
+
+	int best = 0;
+	double bestDiff = std::abs(static_cast<double>(kSsgVolTable[0]) - target);
+	for (int i = 1; i < 16; ++i) {
+		double diff = std::abs(static_cast<double>(kSsgVolTable[i]) - target);
+		if (diff < bestDiff) {
+			bestDiff = diff;
+			best = i;
+		}
+	}
+
+	return static_cast<uint8_t>((regValue & 0xe0) | static_cast<uint8_t>(best));
 }
 
 void VgmLogger::setDataBlock(std::vector<uint8_t> data, uint8_t blockType)
