@@ -125,8 +125,32 @@ void writeVgm(BinaryContainer& container, int target, const std::vector<uint8_t>
 
 		// Entry count
 		container.appendUint8(1);
-		// Set SSG volume of YM2608
-		container.appendUint8(0x87);
+
+		// VGM "Chip Volume" chip ID. When the SSG is the built-in unit of an
+		// FM chip (YM2203/YM2608/YM2610B), bit 7 (0x80) must be combined with
+		// THAT FM chip's own ID to mean "the paired/embedded SSG of this
+		// chip" -- e.g. 0x87 addresses YM2608's internal SSG, not a second
+		// YM2608. Previously this was hardcoded to 0x87 (YM2608) regardless
+		// of the actual export target, so exporting to YM2610B (chip ID 8,
+		// hardcoded here as 0x88) silently wrote a volume entry for a
+		// YM2608 that doesn't exist in the file, and players ignored it --
+		// the SSG mix gain had no audible effect. When SSG is instead a
+		// standalone external chip (AY8910/YM2149), address it directly by
+		// its own ID (0x12) with no pairing bit.
+		uint8_t ssgVolumeChipId;
+		switch (target & Export_SsgMask) {
+		case Export_InternalSsg:
+			switch (target & Export_FmMask) {
+			case Export_YM2203: ssgVolumeChipId = 0x06 | 0x80; break;
+			case Export_YM2610B: ssgVolumeChipId = 0x08 | 0x80; break;
+			default: ssgVolumeChipId = 0x07 | 0x80; break; // YM2608
+			}
+			break;
+		default:
+			ssgVolumeChipId = 0x12; // AY8910 (also used for YM2149)
+			break;
+		}
+		container.appendUint8(ssgVolumeChipId);
 		// Flags
 		container.appendUint8(0);
 		// Volume
