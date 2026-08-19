@@ -177,7 +177,13 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 		// which order BambooTracker happens to write the two halves in.
 		auto emitPair = [this](uint8_t loAddr, uint8_t hiAddr) {
 			uint16_t combined = static_cast<uint16_t>((deltaTRegShadow_[hiAddr] << 8) | deltaTRegShadow_[loAddr]);
-			uint16_t rescaled = combined >> 3;
+			auto mapped = deltaTAddrMap_.find(combined);
+			// Prefer the exact per-sample mapping built at export time (see
+			// setDeltaTAddressMap()); a value with no known sample (e.g. the
+			// whole-DRAM limit register) falls back to the coarse >>3
+			// approximation, which is harmless since that register is just
+			// an outer safety bound, not a per-sample address.
+			uint16_t rescaled = (mapped != deltaTAddrMap_.end()) ? mapped->second : (combined >> 3);
 			buf_.push_back(0x58);
 			buf_.push_back(static_cast<uint8_t>(0x10 + loAddr));
 			buf_.push_back(static_cast<uint8_t>(rescaled & 0xff));
@@ -231,6 +237,11 @@ void VgmLogger::recordRegisterChange(uint32_t offset, uint8_t value)
 			buf_.push_back(value);
 		}
 	}
+}
+
+void VgmLogger::setDeltaTAddressMap(std::unordered_map<uint16_t, uint16_t> addrMap)
+{
+	deltaTAddrMap_ = std::move(addrMap);
 }
 
 void VgmLogger::setSsgGain(double ratio) noexcept

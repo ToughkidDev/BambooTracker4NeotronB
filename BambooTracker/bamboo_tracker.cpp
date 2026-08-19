@@ -1866,7 +1866,25 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 
 	// Set ADPCM
 	opnaCtrl_->clearSamplesADPCM();
+	bool isYm2610b = (target & io::Export_FmMask) == io::Export_YM2610B;
 	std::vector<uint8_t> rom;
+	// YM2610B's Delta-T address registers are 256-byte-unit (vs. YM2608's
+	// 32-byte-unit) -- a coarser 8x granularity. BambooTracker packs samples
+	// tightly at 32-byte granularity for its own YM2608-native DRAM
+	// emulation (see OPNAController::storeSampleADPCM()), so consecutive
+	// samples' start offsets are usually NOT 256-byte-aligned. Naively
+	// rescaling the YM2608-native register value by >>3 (done in
+	// VgmLogger::recordRegisterChange()) then rounds each sample's start/
+	// stop down to the nearest 256-byte boundary in place, which can land
+	// inside the *previous* sample's data since there's no gap between them
+	// -- and the more samples are packed in, the more of them end up
+	// misaligned this way. Build a second, YM2610B-only copy of the ROM with
+	// every sample re-aligned to start on its own 256-byte boundary
+	// (mirroring what setRhythmAdpcmAData() already does for the ADPCM-A
+	// rhythm ROM), plus an exact address map so the register rescaling can
+	// look up the *correct* aligned address instead of blindly shifting.
+	std::vector<uint8_t> romYm2610b;
+	std::unordered_map<uint16_t, uint16_t> deltaTAddrMap;
 	for (auto sampNum : instMan_->getSampleADPCMValidIndices()) {
 		std::vector<uint8_t>&& sample = instMan_->getSampleADPCMRawSample(sampNum);
 		size_t startAddr, stopAddr;
@@ -1875,13 +1893,32 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 			instMan_->setSampleADPCMStopAddress(sampNum, stopAddr);
 			rom.resize((stopAddr + 1) << 5);
 			std::copy(sample.begin(), sample.end(), rom.begin() + static_cast<int>(startAddr << 5));
+
+			if (isYm2610b) {
+				constexpr size_t blockSize = 0x100;	// 256-byte alignment unit
+				size_t alignedStart = (romYm2610b.size() + blockSize - 1) / blockSize * blockSize;
+				romYm2610b.resize(alignedStart);
+				romYm2610b.insert(romYm2610b.end(), sample.begin(), sample.end());
+				size_t paddedLen = ((sample.size() + blockSize - 1) / blockSize) * blockSize;
+				romYm2610b.resize(alignedStart + paddedLen, 0x00);	// pad tail with silence
+
+				uint16_t startReg = static_cast<uint16_t>(alignedStart >> 8);
+				uint16_t stopReg = static_cast<uint16_t>((alignedStart + paddedLen - 1) >> 8);
+				deltaTAddrMap[static_cast<uint16_t>(startAddr)] = startReg;
+				deltaTAddrMap[static_cast<uint16_t>(stopAddr)] = stopReg;
+			}
 		}
 	}
 	// YM2610/YM2610B expose the melodic ADPCM (Delta-T) ROM under a different
 	// VGM data block type than YM2608, even though the sample data itself is
 	// byte-for-byte compatible.
-	bool isYm2610b = (target & io::Export_FmMask) == io::Export_YM2610B;
-	exCntr->setDataBlock(std::move(rom), isYm2610b ? 0x83 : 0x81);
+	if (isYm2610b) {
+		exCntr->setDeltaTAddressMap(std::move(deltaTAddrMap));
+		exCntr->setDataBlock(std::move(romYm2610b), 0x83);
+	}
+	else {
+		exCntr->setDataBlock(std::move(rom), 0x81);
+	}
 
 	// Rhythm has no equivalent to export on YM2610/YM2610B without supplying
 	// sample ROM data of its own; reuse BambooTracker's built-in OPNA rhythm

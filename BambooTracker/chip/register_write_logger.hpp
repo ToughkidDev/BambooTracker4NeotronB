@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <vector>
+#include <unordered_map>
 
 namespace chip
 {
@@ -94,6 +95,32 @@ public:
 	void setRhythmAdpcmAData(std::vector<uint8_t> rhythmRom);
 
 	/**
+	 * @brief Provide an exact address translation table for YM2610B Delta-T
+	 *		  start/stop register values, used instead of a blind bit-shift.
+	 *
+	 * BambooTracker packs its own (YM2608-native) ADPCM sample RAM tightly at
+	 * 32-byte granularity, so consecutive samples' start offsets generally
+	 * are NOT aligned to YM2610/YM2610B's coarser 256-byte address-register
+	 * granularity. Naively rescaling a YM2608-native register value by >>3
+	 * (32/8 = 8x) rounds it down to the nearest 256-byte boundary in place --
+	 * with no gap between samples, that can land inside the *previous*
+	 * sample's data instead of the intended one. The export path builds a
+	 * separate YM2610B ROM image with every sample re-aligned to start on
+	 * its own 256-byte boundary (mirroring setRhythmAdpcmAData()) and passes
+	 * the resulting exact (YM2608-native register value -> YM2610B-native
+	 * register value) mapping here. recordRegisterChange() looks up each
+	 * observed start/stop value in this table; a value with no entry (e.g.
+	 * the whole-DRAM limit register, which isn't tied to one sample) still
+	 * falls back to the >>3 approximation.
+	 *
+	 * No-op unless the export target is YM2610B.
+	 *
+	 * @param addrMap Map from YM2608-native (32-byte-unit) register value to
+	 *		  the exact YM2610B-native (256-byte-unit) register value.
+	 */
+	void setDeltaTAddressMap(std::unordered_map<uint16_t, uint16_t> addrMap);
+
+	/**
 	 * @brief Set the linear amplitude ratio applied to SSG channel volume
 	 *		  register writes (offsets 0x08-0x0a: channel A/B/C amplitude).
 	 *
@@ -125,6 +152,10 @@ private:
 	// commands) so they can be rescaled before being remapped; see the
 	// comment above the YM2610B Delta-T branch in recordRegisterChange().
 	uint8_t deltaTRegShadow_[0x10] = {};
+
+	// Exact YM2608-native -> YM2610B-native Delta-T address register value
+	// map; see setDeltaTAddressMap().
+	std::unordered_map<uint16_t, uint16_t> deltaTAddrMap_;
 
 	double ssgGainRatio_ = 1.0;
 	uint8_t scaleSsgVolumeReg(uint8_t regValue) const;
