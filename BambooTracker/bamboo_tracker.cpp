@@ -1900,7 +1900,14 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 				romYm2610b.resize(alignedStart);
 				romYm2610b.insert(romYm2610b.end(), sample.begin(), sample.end());
 				size_t paddedLen = ((sample.size() + blockSize - 1) / blockSize) * blockSize;
-				romYm2610b.resize(alignedStart + paddedLen, 0x00);	// pad tail with silence
+				// The stop address computed below covers this sample's whole
+				// trailing 256-byte block, so the padding is decoded and heard
+				// too; fill it with codes that settle the decoder at silence
+				// rather than 0x00, which is a rising ramp and not silence at
+				// all (see chip::makeAdpcmBPadding()).
+				std::vector<uint8_t> pad = chip::makeAdpcmBPadding(sample.data(), sample.size(),
+																   paddedLen - sample.size());
+				romYm2610b.insert(romYm2610b.end(), pad.begin(), pad.end());
 
 				uint16_t startReg = static_cast<uint16_t>(alignedStart >> 8);
 				uint16_t stopReg = static_cast<uint16_t>((alignedStart + paddedLen - 1) >> 8);

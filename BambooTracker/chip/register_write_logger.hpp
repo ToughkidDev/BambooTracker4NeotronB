@@ -32,6 +32,40 @@
 
 namespace chip
 {
+/**
+ * @brief Build ADPCM-A padding bytes that settle the decoder back to silence.
+ *
+ * YM2610/YM2610B ADPCM-A start/end addresses have 256-byte granularity and the
+ * end address is inclusive of its whole 256-byte block, so every byte between
+ * a sample's real end and its block boundary IS fetched and decoded. ADPCM-A
+ * has no "no change" code: nibble 0x0 decodes to +step/8, never to 0, so a
+ * 0x00 fill is not silence -- it ramps the 12-bit accumulator steadily upward
+ * (measured at 13-38% of full scale across the 64-192 byte pads the built-in
+ * rhythm samples need) and is then cut off abruptly at the end address, which
+ * is an audible click on the tail of every rhythm hit. Instead, decode the
+ * sample to recover the decoder's final accumulator/step state and emit
+ * nibbles that drive the accumulator back to zero and hold it there
+ * (residual +-2, i.e. 0.1% of full scale, at the minimum step size).
+ *
+ * @param sample Sample data immediately preceding the padding.
+ * @param len Length of @p sample in bytes.
+ * @param padLen Number of padding bytes to generate.
+ * @return Exactly @p padLen bytes of padding.
+ */
+std::vector<uint8_t> makeAdpcmAPadding(const uint8_t* sample, size_t len, size_t padLen);
+
+/**
+ * @brief Build Delta-T (ADPCM-B) padding bytes that settle the decoder back to
+ *		  silence; see makeAdpcmAPadding() for why a 0x00 fill cannot be used.
+ *
+ * ADPCM-B's accumulator saturates rather than wrapping and its step size is
+ * scaled multiplicatively rather than by table index, but nibble 0x0 is a
+ * positive delta there too, so a 0x00 fill drifts just the same: up to 23% of
+ * full scale over a 255-byte pad even for a sample that ends in silence, and
+ * further still for one that ends on a loud value.
+ */
+std::vector<uint8_t> makeAdpcmBPadding(const uint8_t* sample, size_t len, size_t padLen);
+
 class AbstractRegisterWriteLogger
 {
 public:

@@ -27,6 +27,7 @@
 #include "io/export_io.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iterator>
 
 namespace chip
@@ -41,6 +42,118 @@ constexpr uint8_t kSsgVolTable[16] = {
 	0x00, 0x03, 0x04, 0x06, 0x09, 0x0D, 0x12, 0x1D,
 	0x22, 0x37, 0x4D, 0x62, 0x82, 0xA6, 0xD0, 0xFF
 };
+
+// Minimal ADPCM-A/ADPCM-B decoder models, ported from BambooTracker's bundled
+// MAME core (chip/mame/fmopn.c: Init_ADPCMATable(), ADPCMA_calc_chan(),
+// YM_DELTAT_ADPCM_CALC()) and cross-checked against ymfm
+// (chip/ymfm/ymfm_adpcm.cpp); the two implementations agree exactly. These are
+// not used to render audio -- only to work out what state the decoder is left
+// in at the end of a sample, so that the padding which follows it can be made
+// to actually sound like silence. See makeAdpcmAPadding().
+constexpr int kAdpcmStepTable[49] = {
+	  16,   17,   19,   21,   23,   25,   28,
+	  31,   34,   37,   41,   45,   50,   55,
+	  60,   66,   73,   80,   88,   97,  107,
+	 118,  130,  143,  157,  173,  190,  209,
+	 230,  253,  279,  307,  337,  371,  408,
+	 449,  494,  544,  598,  658,  724,  796,
+	 876,  963, 1060, 1166, 1282, 1411, 1552
+};
+constexpr int kAdpcmAStepInc[8] = { -1, -1, -1, -1, 2, 5, 7, 9 };
+constexpr int kAdpcmBStepScale[8] = { 57, 57, 57, 57, 77, 102, 128, 153 };
+constexpr int kAdpcmBStepMin = 127;
+constexpr int kAdpcmBStepMax = 24576;
+
+struct AdpcmAState
+{
+	int acc = 0;			// 12-bit signed; wraps on overflow, does not saturate
+	int stepIdx = 0;
+
+	int accAfter(int nibble) const noexcept
+	{
+		int delta = (2 * (nibble & 7) + 1) * kAdpcmStepTable[stepIdx] / 8;
+		if (nibble & 8) delta = -delta;
+		int a = (acc + delta) & 0xfff;
+		return (a & 0x800) ? (a - 0x1000) : a;	// sign-extend 12 bits
+	}
+
+	void advance(int nibble) noexcept
+	{
+		acc = accAfter(nibble);
+		stepIdx = std::min(48, std::max(0, stepIdx + kAdpcmAStepInc[nibble & 7]));
+	}
+};
+
+struct AdpcmBState
+{
+	int acc = 0;			// 16-bit signed; saturates
+	int stepSize = kAdpcmBStepMin;
+
+	int accAfter(int nibble) const noexcept
+	{
+		int delta = (2 * (nibble & 7) + 1) * stepSize / 8;
+		if (nibble & 8) delta = -delta;
+		return std::min(32767, std::max(-32768, acc + delta));
+	}
+
+	void advance(int nibble) noexcept
+	{
+		acc = accAfter(nibble);
+		stepSize = std::min(kAdpcmBStepMax,
+							std::max(kAdpcmBStepMin, stepSize * kAdpcmBStepScale[nibble & 7] / 64));
+	}
+};
+
+// Greedily pick, for each nibble, the code whose decoded output lands closest
+// to zero. Codes are tried smallest-magnitude first and only replaced on a
+// strict improvement, so ties keep selecting code 0/8 -- which is also what
+// shrinks the step size -- and the padding settles into a +-1 LSB dither
+// around zero rather than hunting around it.
+template <class State>
+std::vector<uint8_t> settleToSilence(State st, size_t padLen)
+{
+	std::vector<uint8_t> pad;
+	pad.reserve(padLen);
+	for (size_t i = 0; i < padLen; ++i) {
+		int byte = 0;
+		for (int half = 0; half < 2; ++half) {
+			int best = 0;
+			int bestDist = std::abs(st.accAfter(0));
+			for (int nib = 1; nib < 16; ++nib) {
+				int dist = std::abs(st.accAfter(nib));
+				if (dist < bestDist) {
+					bestDist = dist;
+					best = nib;
+				}
+			}
+			st.advance(best);
+			byte = (byte << 4) | best;	// the high nibble of a byte is decoded first
+		}
+		pad.push_back(static_cast<uint8_t>(byte));
+	}
+	return pad;
+}
+
+template <class State>
+std::vector<uint8_t> makePadding(const uint8_t* sample, size_t len, size_t padLen)
+{
+	State st;	// key-on resets the accumulator and step size
+	for (size_t i = 0; i < len; ++i) {
+		st.advance(sample[i] >> 4);
+		st.advance(sample[i] & 0x0f);
+	}
+	return settleToSilence(st, padLen);
+}
+}
+
+std::vector<uint8_t> makeAdpcmAPadding(const uint8_t* sample, size_t len, size_t padLen)
+{
+	return makePadding<AdpcmAState>(sample, len, padLen);
+}
+
+std::vector<uint8_t> makeAdpcmBPadding(const uint8_t* sample, size_t len, size_t padLen)
+{
+	return makePadding<AdpcmBState>(sample, len, padLen);
 }
 AbstractRegisterWriteLogger::AbstractRegisterWriteLogger(int target)
 	: target_(target),
@@ -338,7 +451,14 @@ void VgmLogger::setRhythmAdpcmAData(std::vector<uint8_t> rhythmRom)
 		uint32_t alignedStart = static_cast<uint32_t>(paddedRom.size());
 
 		paddedRom.insert(paddedRom.end(), rhythmRom.begin() + sampleBegin, rhythmRom.begin() + sampleEnd + 1);
-		paddedRom.resize(alignedStart + paddedLen, 0x00);	// pad tail with silence up to the block boundary
+		// The end register set below covers this sample's whole trailing
+		// 256-byte block, so these pad bytes really are decoded and heard.
+		// They therefore have to be ADPCM-A codes that settle the decoder at
+		// silence; a plain 0x00 fill decodes as a steady upward ramp that is
+		// then cut off at the end address, i.e. a click (see
+		// makeAdpcmAPadding()).
+		std::vector<uint8_t> pad = makeAdpcmAPadding(&rhythmRom[sampleBegin], sampleLen, paddedLen - sampleLen);
+		paddedRom.insert(paddedRom.end(), pad.begin(), pad.end());
 
 		startOffset[ch] = alignedStart;
 		endOffset[ch] = alignedStart + paddedLen - 1;	// exactly (register << 8) + 0xff for some register
