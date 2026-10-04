@@ -21,6 +21,7 @@
 #include "chip/real_chip_interface.hpp"
 #include "io/binary_container.hpp"
 #include "io/export_io.hpp"
+#include "io/fur_io.hpp"
 #include "io/wav_container.hpp"
 #include "bamboo_tracker_defs.hpp"
 #include "enum_hash.hpp"
@@ -340,6 +341,7 @@ public:
 					 const io::GD3Tag& tag, bool shouldSetMix, double gain, ExportCancellCallback checkFunc);
 	bool exportToS98(io::BinaryContainer& container, int target, bool tagEnabled,
 					 const io::S98Tag& tag, int rate, ExportCancellCallback checkFunc);
+	std::vector<std::string> exportToFur(io::BinaryContainer& container, io::FurExportTarget target);
 
 	// Real chip interface
 	void connectToRealChip(RealChipInterfaceType type, RealChipInterfaceGeneratorFunc* f = nullptr);

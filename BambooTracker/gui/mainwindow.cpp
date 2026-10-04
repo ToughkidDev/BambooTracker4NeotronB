@@ -49,6 +49,7 @@
 #include "gui/configuration_dialog.hpp"
 #include "gui/wave_export_settings_dialog.hpp"
 #include "gui/vgm_export_settings_dialog.hpp"
+#include "gui/fur_export_settings_dialog.hpp"
 #include "gui/instrument_selection_dialog.hpp"
 #include "gui/s98_export_settings_dialog.hpp"
 #include "gui/configuration_handler.hpp"
@@ -3732,6 +3733,61 @@ AFTER_VGM_WRITE:
     catch (std::exception& e) {
         showStreamFailedDialog(e.what());
     }
+}
+
+void MainWindow::on_actionFurnace_triggered()
+{
+	FurExportSettingsDialog dialog(this);
+	if (dialog.exec() != QDialog::Accepted) return;
+
+	QString dir = QString::fromStdString(config_.lock()->getWorkingDirectory());
+	QString path = QFileDialog::getSaveFileName(
+					   this, tr("Export to Furnace module"),
+					   QString("%1/%2.fur").arg(dir.isEmpty() ? "." : dir, getModuleFileBaseName()),
+					   tr("Furnace module (*.fur)") + ";;" + tr("All files (*)"), nullptr
+				   #if defined(Q_OS_LINUX) || (defined(Q_OS_BSD4) && !defined(Q_OS_DARWIN))
+					   , QFileDialog::DontUseNativeDialog
+				   #endif
+					   );
+	if (path.isNull()) return;
+	if (!path.endsWith(".fur")) path += ".fur";	// For linux
+
+	bt_->stopPlaySong();
+	lockWidgets(false);
+
+	try {
+		std::vector<std::string> warnings;
+		QByteArray bytes;
+		{
+			io::BinaryContainer container;
+			warnings = bt_->exportToFur(container, dialog.getExportTarget());
+			bytes.reserve(static_cast<int>(container.size()));
+			std::move(container.begin(), container.end(), std::back_inserter(bytes));
+		}
+		QFile fp(path);
+		if (!fp.open(QIODevice::WriteOnly)) {
+			FileIOErrorMessageBox::openError(path, false, io::FileType::FUR, this);
+			return;
+		}
+		fp.write(bytes);
+		fp.close();
+
+		config_.lock()->setWorkingDirectory(QFileInfo(path).dir().path().toStdString());
+
+		if (!warnings.empty()) {
+			QStringList list;
+			for (const std::string& w : warnings) list << QString::fromStdString(w);
+			QMessageBox::information(this, tr("Export to Furnace module"),
+									 tr("The module was exported with the following limitations:") + "\n\n"
+									 + list.join("\n"));
+		}
+	}
+	catch (io::FileIOError& e) {
+		FileIOErrorMessageBox(path, false, e, this).exec();
+	}
+	catch (std::exception& e) {
+		FileIOErrorMessageBox(path, false, io::FileType::FUR, QString(e.what()), this).exec();
+	}
 }
 
 void MainWindow::on_actionS98_triggered()

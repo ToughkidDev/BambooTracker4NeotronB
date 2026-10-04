@@ -71,6 +71,7 @@ SOURCES += \
     gui/effect_description.cpp \
     gui/effect_list_dialog.cpp \
     gui/file_io_error_message_box.cpp \
+    gui/fur_export_settings_dialog.cpp \
     gui/font_info_widget.cpp \
     gui/go_to_dialog.cpp \
     gui/gui_utils.cpp \
@@ -104,6 +105,7 @@ SOURCES += \
     io/dmp_io.cpp \
     io/export_io.cpp \
     io/ff_io.cpp \
+    io/fur_io.cpp \
     io/ins_io.cpp \
     io/io_utils.cpp \
     io/opni_io.cpp \
@@ -266,6 +268,7 @@ HEADERS += \
     gui/effect_description.hpp \
     gui/effect_list_dialog.hpp \
     gui/file_io_error_message_box.hpp \
+    gui/fur_export_settings_dialog.hpp \
     gui/font_info_widget.hpp \
     gui/go_to_dialog.hpp \
     gui/gui_utils.hpp \
@@ -308,6 +311,7 @@ HEADERS += \
     io/dmp_io.hpp \
     io/export_io.hpp \
     io/ff_io.hpp \
+    io/fur_io.hpp \
     io/ins_io.hpp \
     io/io_file_type.hpp \
     io/io_utils.hpp \
@@ -459,6 +463,7 @@ FORMS += \
     gui/swap_tracks_dialog.ui \
     gui/transpose_song_dialog.ui \
     gui/vgm_export_settings_dialog.ui \
+    gui/fur_export_settings_dialog.ui \
     gui/wave_export_settings_dialog.ui \
     gui/instrument_selection_dialog.ui \
     gui/s98_export_settings_dialog.ui \

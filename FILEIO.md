@@ -46,3 +46,25 @@ The tracker can export a song to the following files:
 - .wav (WAVE file)
 - .vgm (VGM file)
 - .s98 (S98 file)
+- .fur (Furnace module, for [Furnace](https://github.com/tildearrow/furnace) 0.6.8.3 or later)
+
+### Furnace module export
+
+The current song is converted to a Furnace module for either the YM2608 (OPNA)
+or the YM2610B (OPNB2) chip, chosen in the export dialog. Songs in FM3ch
+expanded mode use Furnace's "Extended Channel 3" variant of the chip.
+
+- YM2608: tracks map one-to-one to Furnace's YM2608 channels.
+- YM2610B: rhythm tracks become ADPCM-A channels playing the built-in rhythm
+  samples, which are embedded in the module; the ADPCM track becomes the
+  ADPCM-B channel.
+
+Instrument sequences are converted to Furnace macros and effects to their
+closest Furnace equivalents. SSG notes are transposed up one octave and the SSG
+volume chip setting is adjusted to the module mixer so that the result sounds
+like it does in BambooTracker. Furnace plays the module with its own engine,
+so the result is a close starting point for further editing rather than a
+sample-exact copy. The following have no Furnace equivalent and are dropped
+(the export reports them): brightness (`B0xx`), fine detune (`FPxx`), volume
+delay (`Mxyy`), extended volume slide (`EAxy`), register writes (`0Xxx`,
+`0Yxx`, `0Zxx`) and the volume change of retrigger (`0Kxy`).

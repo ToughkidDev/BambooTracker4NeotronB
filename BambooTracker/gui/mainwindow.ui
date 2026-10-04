@@ -578,6 +578,8 @@
      <addaction name="separator"/>
      <addaction name="actionVGM"/>
      <addaction name="actionS98"/>
+     <addaction name="separator"/>
+     <addaction name="actionFurnace"/>
     </widget>
     <widget class="QMenu" name="menu_Recent_Files">
      <property name="title">
@@ -1420,6 +1422,11 @@
   <action name="actionS98">
    <property name="text">
     <string>&amp;S98...</string>
+   </property>
+  </action>
+  <action name="actionFurnace">
+   <property name="text">
+    <string>&amp;Furnace module...</string>
    </property>
   </action>
   <action name="actionClear">

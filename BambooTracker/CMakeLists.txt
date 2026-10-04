@@ -131,6 +131,7 @@ set (BT_SOURCES
 	gui/event_guard.cpp
 	gui/file_history.cpp
 	gui/file_io_error_message_box.cpp
+	gui/fur_export_settings_dialog.cpp
 	gui/font_info_widget.cpp
 	gui/fm_envelope_set_edit_dialog.cpp
 	gui/go_to_dialog.cpp
@@ -192,6 +193,7 @@ set (BT_SOURCES
 	io/dmp_io.cpp
 	io/export_io.cpp
 	io/ff_io.cpp
+	io/fur_io.cpp
 	io/instrument_io.cpp
 	io/ins_io.cpp
 	io/io_utils.cpp
@@ -262,6 +264,7 @@ set (BT_FORMS
 	gui/swap_tracks_dialog.ui
 	gui/transpose_song_dialog.ui
 	gui/vgm_export_settings_dialog.ui
+	gui/fur_export_settings_dialog.ui
 	gui/wave_export_settings_dialog.ui
 )
 

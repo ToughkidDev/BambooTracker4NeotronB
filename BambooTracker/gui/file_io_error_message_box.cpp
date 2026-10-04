@@ -32,6 +32,7 @@ namespace
 const std::unordered_map<io::FileType, const char*> FILE_NAMES = {
 	{ io::FileType::Mod, QT_TRANSLATE_NOOP("FileType", "module") },
 	{ io::FileType::S98, QT_TRANSLATE_NOOP("FileType", "s98") },
+	{ io::FileType::FUR, QT_TRANSLATE_NOOP("FileType", "fur") },
 	{ io::FileType::VGM, QT_TRANSLATE_NOOP("FileType", "vgm") },
 	{ io::FileType::WAV, QT_TRANSLATE_NOOP("FileType", "wav") },
 	{ io::FileType::Bank, QT_TRANSLATE_NOOP("FileType", "bank") },
@@ -76,6 +77,7 @@ void FileIOErrorMessageBox::setText(const QString& file, bool isInput, io::FileT
 	else {
 		switch (ftype) {
 		case io::FileType::S98:
+		case io::FileType::FUR:
 		case io::FileType::VGM:
 		case io::FileType::WAV:
 			text_ = tr("Failed to export to %1.");

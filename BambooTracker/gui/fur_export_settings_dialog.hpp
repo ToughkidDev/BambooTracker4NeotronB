@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2020 BambooTracker contributors
+ * Copyright (C) 2026 BambooTracker contributors
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -23,12 +23,31 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#ifndef FUR_EXPORT_SETTINGS_DIALOG_HPP
+#define FUR_EXPORT_SETTINGS_DIALOG_HPP
 
-namespace io
-{
-enum class FileType
-{
-	Mod, Inst, WAV, VGM, Bank, S98, FUR, Unknown
-};
+#include <QDialog>
+#include "io/fur_io.hpp"
+
+namespace Ui {
+class FurExportSettingsDialog;
 }
+
+class FurExportSettingsDialog : public QDialog
+{
+	Q_OBJECT
+
+public:
+	explicit FurExportSettingsDialog(QWidget *parent = nullptr);
+	~FurExportSettingsDialog() override;
+
+	io::FurExportTarget getExportTarget() const;
+
+private slots:
+	void updateSupportInformation();
+
+private:
+	Ui::FurExportSettingsDialog *ui;
+};
+
+#endif // FUR_EXPORT_SETTINGS_DIALOG_HPP
