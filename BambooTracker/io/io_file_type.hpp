@@ -29,6 +29,6 @@ namespace io
 {
 enum class FileType
 {
-	Mod, Inst, WAV, VGM, Bank, S98, Unknown
+	Mod, Inst, WAV, VGM, Bank, S98, FUR, Unknown
 };
 }

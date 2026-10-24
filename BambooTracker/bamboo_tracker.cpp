@@ -1982,6 +1982,14 @@ bool BambooTracker::exportToVgm(io::BinaryContainer& container, int target, bool
 	}
 }
 
+std::vector<std::string> BambooTracker::exportToFur(io::BinaryContainer& container, io::FurExportTarget target)
+{
+	// The rhythm ROM is only embedded for YM2610B, which has no rhythm samples of its own.
+	return io::writeFur(container, mod_, instMan_, curSongNum_, target,
+						std::vector<uint8_t>(std::begin(YM2608_ADPCM_ROM), std::end(YM2608_ADPCM_ROM)),
+						opnaCtrl_->getMasterVolumeSSG() - opnaCtrl_->getMasterVolumeFM());
+}
+
 bool BambooTracker::exportToS98(io::BinaryContainer& container, int target, bool tagEnabled,
 								const io::S98Tag& tag, int rate, ExportCancellCallback checkFunc)
 {

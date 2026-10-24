@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>FurExportSettingsDialog</class>
+ <widget class="QDialog" name="FurExportSettingsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>420</width>
+    <height>260</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Furnace export settings</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="targetGroupBox">
+     <property name="title">
+      <string>Target</string>
+     </property>
+     <layout class="QVBoxLayout" name="targetLayout">
+      <item>
+       <widget class="QRadioButton" name="ym2608RadioButton">
+        <property name="text">
+         <string>YM2608 OPNA</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="ym2610bRadioButton">
+        <property name="text">
+         <string>YM2610B OPNB</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="channelGroupBox">
+     <property name="title">
+      <string>Channel mapping</string>
+     </property>
+     <layout class="QFormLayout" name="channelLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="rhythmTitleLabel">
+        <property name="text">
+         <string>Rhythm:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="rhythmLabel">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="adpcmTitleLabel">
+        <property name="text">
+         <string>ADPCM:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="adpcmLabel">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="noteLabel">
+     <property name="text">
+      <string>The current song is exported as a Furnace 0.6.8.3 module (.fur). FM, SSG, rhythm and ADPCM tracks, instruments and samples are converted; effects without a Furnace equivalent are dropped.</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="standardButtons">
+      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>accepted()</signal>
+   <receiver>FurExportSettingsDialog</receiver>
+   <slot>accept()</slot>
+  </connection>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>rejected()</signal>
+   <receiver>FurExportSettingsDialog</receiver>
+   <slot>reject()</slot>
+  </connection>
+ </connections>
+</ui>
